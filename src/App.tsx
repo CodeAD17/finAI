@@ -8,6 +8,7 @@ import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
+import { validateOnboardingData } from './utils/validation';
 
 type Page = 'dashboard' | 'transactions' | 'budgets' | 'insights' | 'settings';
 
@@ -27,11 +28,19 @@ function App() {
     savingsGoal: 0,
     onboardingCompleted: false,
   });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedData = localStorage.getItem('flowbudget_user');
-    if (savedData) {
-      setUserData(JSON.parse(savedData));
+    try {
+      const savedData = localStorage.getItem('flowbudget_user');
+      if (savedData) {
+        setUserData(JSON.parse(savedData));
+      }
+    } catch (err) {
+      setError('Failed to load user data');
+      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
@@ -40,12 +49,14 @@ function App() {
   };
 
   const handleOnboardingComplete = (data: { fullName: string; monthlyIncome: number; savingsGoal: number }) => {
-    const newUserData = {
-      ...data,
-      onboardingCompleted: true,
-    };
-    setUserData(newUserData);
-    localStorage.setItem('flowbudget_user', JSON.stringify(newUserData));
+    try {
+      validateOnboardingData(data);
+      const newUserData = { ...data, onboardingCompleted: true };
+      setUserData(newUserData);
+      localStorage.setItem('flowbudget_user', JSON.stringify(newUserData));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid data provided');
+    }
   };
 
   const handleNavigate = (page: Page) => {
@@ -56,12 +67,16 @@ function App() {
     return <AppLoader onComplete={handleLoaderComplete} />;
   }
 
+  if (error) {
+    return <div className="p-8 text-red-400">{error}</div>;
+  }
+
   if (!userData.onboardingCompleted) {
     return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
   const mockExpenses = 4000;
-  const mockSavings = userData.monthlyIncome - mockExpenses;
+  const mockSavings = Math.max(0, userData.monthlyIncome - mockExpenses);
 
   const pageComponents = {
     dashboard: (
@@ -89,10 +104,8 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0B0B0C] text-gray-200">
       <Sidebar currentPage={currentPage} onNavigate={handleNavigate} />
-
       <div className="ml-20">
         <Header title={pageTitles[currentPage]} userName={userData.fullName} />
-
         <main className="p-8">
           {pageComponents[currentPage]}
         </main>
